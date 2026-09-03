@@ -12,11 +12,11 @@ tags:
     description: Search and driver response operations
 
 paths:
-  /trips/{tripId}/driver-search:
+  /trips/{tripId}/driver-matches:
     post:
       tags: [Driver Matching]
       summary: Search for a suitable driver
-      operationId: searchDrivers
+      operationId: createDriverMatch
       security:
         - bearerAuth: []
       parameters:
@@ -43,7 +43,7 @@ paths:
         '409':
           description: Trip is not available for matching
 
-  /trips/{tripId}/driver-response:
+  /trips/{tripId}/driver-responses:
     post:
       tags: [Driver Matching]
       summary: Accept or reject a trip request

@@ -1,0 +1,517 @@
+openapi: 3.0.3
+info:
+  title: Trip Booking Service API
+  description: API for booking a trip, matching a driver and processing payment.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+
+tags:
+  - name: Trips
+    description: Create and track trips
+  - name: Driver Matching
+    description: Find and assign a driver
+  - name: Payments
+    description: Process trip payments
+
+paths:
+  /trips:
+    post:
+      tags:
+        - Trips
+      summary: Create a trip
+      description: Implements UC01 and FR01-FR04. Creates a trip when pickup, destination, vehicle type and payment method are valid.
+      operationId: createTrip
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTripRequest'
+      responses:
+        '201':
+          description: Trip created successfully (AC01)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trip'
+        '400':
+          description: Invalid or missing pickup/destination (AC02, AC03)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /trips/{tripId}:
+    get:
+      tags:
+        - Trips
+      summary: Get trip details and status
+      description: Implements UC05 and AC14.
+      operationId: getTrip
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200':
+          description: Trip details returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trip'
+        '404':
+          description: Trip not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /trips/{tripId}/driver-matches:
+    post:
+      tags:
+        - Driver Matching
+      summary: Find a suitable driver
+      description: Implements UC02 and FR02-FR06. Searches READY drivers within 5 km, filters by vehicle type and optionally prioritizes high ratings.
+      operationId: createDriverMatch
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriverSearchRequest'
+      responses:
+        '200':
+          description: Matching process started or a driver was found (AC04-AC07)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverSearchResponse'
+        '404':
+          description: No suitable driver found (AC10)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Trip is not available for driver matching
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /trips/{tripId}/driver-responses:
+    post:
+      tags:
+        - Driver Matching
+      summary: Accept or reject a trip request
+      description: Implements UC03, BRULE01, BRULE07 and EX04. A driver must be READY and must respond before the configured timeout.
+      operationId: respondToTrip
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriverResponseRequest'
+      responses:
+        '200':
+          description: Driver response processed (AC08, AC09)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverResponse'
+        '400':
+          description: Invalid response or response timeout
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Driver is not READY or trip already has a driver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /trips/{tripId}/payments:
+    post:
+      tags:
+        - Payments
+      summary: Create a trip payment
+      description: Implements UC04, BG02 and AC11-AC13. Supports CASH and ONLINE payment methods.
+      operationId: createPayment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentRequest'
+      responses:
+        '201':
+          description: Payment created or confirmed (AC11, AC12)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '400':
+          description: Invalid amount or payment data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Duplicate successful payment or invalid trip state (AC13)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /trips/{tripId}/history:
+    get:
+      tags:
+        - Trips
+      summary: Get trip status history
+      description: Returns all recorded trip status changes.
+      operationId: getTripHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200':
+          description: Trip status history returned
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TripStatusHistory'
+        '404':
+          description: Trip not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    TripId:
+      name: tripId
+      in: path
+      required: true
+      description: Unique trip identifier
+      schema:
+        type: integer
+        format: int64
+        example: 1001
+
+  schemas:
+    CreateTripRequest:
+      type: object
+      required:
+        - pickup
+        - destination
+        - vehicleType
+        - paymentMethod
+      properties:
+        pickup:
+          $ref: '#/components/schemas/Location'
+        destination:
+          $ref: '#/components/schemas/Location'
+        vehicleType:
+          type: string
+          enum: [BIKE, CAR]
+          description: Requested vehicle type (FR04, AC06)
+        paymentMethod:
+          type: string
+          enum: [CASH, ONLINE]
+          description: Payment method selected by the customer (BG02, AC11)
+        prioritizeHighRating:
+          type: boolean
+          default: false
+          description: Prioritize drivers with higher ratings when true (FR05, AC07)
+
+    Location:
+      type: object
+      required:
+        - address
+        - latitude
+        - longitude
+      properties:
+        address:
+          type: string
+          minLength: 1
+          example: 12 Nguyen Hue Street
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          example: 10.7769
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          example: 106.7009
+
+    Trip:
+      type: object
+      required:
+        - tripId
+        - customerId
+        - pickup
+        - destination
+        - vehicleType
+        - tripStatus
+        - createdAt
+      properties:
+        tripId:
+          type: integer
+          format: int64
+          example: 1001
+        customerId:
+          type: integer
+          format: int64
+          example: 501
+        driverId:
+          type: integer
+          format: int64
+          nullable: true
+          example: 801
+        pickup:
+          $ref: '#/components/schemas/Location'
+        destination:
+          $ref: '#/components/schemas/Location'
+        vehicleType:
+          type: string
+          enum: [BIKE, CAR]
+        paymentMethod:
+          type: string
+          enum: [CASH, ONLINE]
+        prioritizeHighRating:
+          type: boolean
+        tripStatus:
+          type: string
+          enum: [SEARCHING, WAITING_DRIVER, MATCHED, IN_PROGRESS, COMPLETED, NO_DRIVER, TIMEOUT, CANCELLED]
+        createdAt:
+          type: string
+          format: date-time
+
+    DriverSearchRequest:
+      type: object
+      properties:
+        radiusKm:
+          type: number
+          format: double
+          minimum: 0.1
+          maximum: 5
+          default: 5
+          description: Search radius. The current business assumption is 5 km (FR02, AC04).
+        vehicleType:
+          type: string
+          enum: [BIKE, CAR]
+        prioritizeHighRating:
+          type: boolean
+          default: false
+
+    DriverSearchResponse:
+      type: object
+      required:
+        - tripId
+        - status
+      properties:
+        tripId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [SEARCHING, WAITING_DRIVER, MATCHED, NO_DRIVER, TIMEOUT]
+        drivers:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriverSummary'
+
+    DriverSummary:
+      type: object
+      required:
+        - driverId
+        - driverStatus
+        - vehicleType
+        - rating
+      properties:
+        driverId:
+          type: integer
+          format: int64
+        driverStatus:
+          type: string
+          enum: [READY]
+          description: Only READY drivers can receive requests (BRULE01, AC05).
+        vehicleType:
+          type: string
+          enum: [BIKE, CAR]
+        rating:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 5
+        distanceKm:
+          type: number
+          format: double
+          minimum: 0
+
+    DriverResponseRequest:
+      type: object
+      required:
+        - driverId
+        - response
+      properties:
+        driverId:
+          type: integer
+          format: int64
+        response:
+          type: string
+          enum: [ACCEPT, REJECT]
+        respondedAt:
+          type: string
+          format: date-time
+
+    DriverResponse:
+      type: object
+      required:
+        - tripId
+        - driverId
+        - response
+        - tripStatus
+      properties:
+        tripId:
+          type: integer
+          format: int64
+        driverId:
+          type: integer
+          format: int64
+        response:
+          type: string
+          enum: [ACCEPT, REJECT, TIMEOUT]
+        tripStatus:
+          type: string
+          enum: [WAITING_DRIVER, MATCHED, SEARCHING, NO_DRIVER, TIMEOUT]
+        message:
+          type: string
+
+    CreatePaymentRequest:
+      type: object
+      required:
+        - amount
+        - paymentMethod
+      properties:
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          example: 75000
+        paymentMethod:
+          type: string
+          enum: [CASH, ONLINE]
+        transactionCode:
+          type: string
+          nullable: true
+          description: Required for a successful online payment response.
+
+    Payment:
+      type: object
+      required:
+        - paymentId
+        - tripId
+        - amount
+        - paymentMethod
+        - paymentStatus
+      properties:
+        paymentId:
+          type: integer
+          format: int64
+        tripId:
+          type: integer
+          format: int64
+        amount:
+          type: number
+          format: double
+        paymentMethod:
+          type: string
+          enum: [CASH, ONLINE]
+        paymentStatus:
+          type: string
+          enum: [PENDING, PAID, FAILED, CANCELLED]
+        transactionCode:
+          type: string
+          nullable: true
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    TripStatusHistory:
+      type: object
+      required:
+        - historyId
+        - tripId
+        - newStatus
+        - changedAt
+      properties:
+        historyId:
+          type: integer
+          format: int64
+        tripId:
+          type: integer
+          format: int64
+        oldStatus:
+          type: string
+          nullable: true
+        newStatus:
+          type: string
+        changedBy:
+          type: string
+        changedAt:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          example: INVALID_LOCATION
+        message:
+          type: string
+          example: Pickup and destination are required.
