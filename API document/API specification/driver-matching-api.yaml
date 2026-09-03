@@ -1,0 +1,191 @@
+openapi: 3.0.3
+info:
+  title: Driver Matching Service API
+  description: API for finding and assigning a READY driver. Implements FR01-FR10, UC02-UC03, BRULE01-BRULE10 and AC04-AC10.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8082/api/v1
+    description: Local Driver Matching Service
+
+tags:
+  - name: Driver Matching
+    description: Search and driver response operations
+
+paths:
+  /trips/{tripId}/driver-search:
+    post:
+      tags: [Driver Matching]
+      summary: Search for a suitable driver
+      operationId: searchDrivers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriverSearchRequest'
+      responses:
+        '200':
+          description: Search started or matching driver returned (AC04-AC07)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverSearchResponse'
+        '404':
+          description: No suitable driver found (AC10)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Trip is not available for matching
+
+  /trips/{tripId}/driver-response:
+    post:
+      tags: [Driver Matching]
+      summary: Accept or reject a trip request
+      operationId: respondToTrip
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriverResponseRequest'
+      responses:
+        '200':
+          description: Driver response processed (AC08, AC09)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverResponse'
+        '400':
+          description: Driver response timeout or invalid response
+        '409':
+          description: Driver is not READY or trip already has a driver
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    TripId:
+      name: tripId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        example: 1001
+  schemas:
+    DriverSearchRequest:
+      type: object
+      required: [pickupLatitude, pickupLongitude, vehicleType]
+      properties:
+        pickupLatitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        pickupLongitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        radiusKm:
+          type: number
+          format: double
+          minimum: 0.1
+          maximum: 5
+          default: 5
+          description: Search radius from FR02. Maximum is 5 km for this project.
+        vehicleType:
+          type: string
+          enum: [BIKE, CAR]
+        prioritizeHighRating:
+          type: boolean
+          default: false
+    DriverSearchResponse:
+      type: object
+      required: [tripId, status]
+      properties:
+        tripId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [SEARCHING, WAITING_DRIVER, MATCHED, NO_DRIVER, TIMEOUT]
+        drivers:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriverSummary'
+    DriverSummary:
+      type: object
+      required: [driverId, driverStatus, vehicleType, rating]
+      properties:
+        driverId:
+          type: integer
+          format: int64
+        driverStatus:
+          type: string
+          enum: [READY]
+          description: BRULE01 - Only READY drivers can receive requests.
+        vehicleType:
+          type: string
+          enum: [BIKE, CAR]
+        rating:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 5
+        distanceKm:
+          type: number
+          format: double
+          minimum: 0
+    DriverResponseRequest:
+      type: object
+      required: [driverId, response]
+      properties:
+        driverId:
+          type: integer
+          format: int64
+        response:
+          type: string
+          enum: [ACCEPT, REJECT]
+        respondedAt:
+          type: string
+          format: date-time
+    DriverResponse:
+      type: object
+      required: [tripId, driverId, response, tripStatus]
+      properties:
+        tripId:
+          type: integer
+          format: int64
+        driverId:
+          type: integer
+          format: int64
+        response:
+          type: string
+          enum: [ACCEPT, REJECT, TIMEOUT]
+        tripStatus:
+          type: string
+          enum: [WAITING_DRIVER, MATCHED, SEARCHING, NO_DRIVER, TIMEOUT]
+        message:
+          type: string
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string

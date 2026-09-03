@@ -1,0 +1,142 @@
+openapi: 3.0.3
+info:
+  title: Trip Status Service API
+  description: API for tracking trip status and status history. Implements BR06-BR07, UC05, AC10 and AC14.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8084/api/v1
+    description: Local Trip Status Service
+
+tags:
+  - name: Trip Status
+    description: Trip status and history operations
+
+paths:
+  /trips/{tripId}/status:
+    get:
+      tags: [Trip Status]
+      summary: Get current trip status
+      operationId: getTripStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200':
+          description: Current trip status returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripStatus'
+        '404':
+          description: Trip not found
+    patch:
+      tags: [Trip Status]
+      summary: Update trip status
+      operationId: updateTripStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStatusRequest'
+      responses:
+        '200':
+          description: Status updated and history recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripStatus'
+        '400':
+          description: Invalid status transition
+        '404':
+          description: Trip not found
+
+  /trips/{tripId}/history:
+    get:
+      tags: [Trip Status]
+      summary: Get trip status history
+      operationId: getTripStatusHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200':
+          description: Status history returned
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StatusHistoryItem'
+        '404':
+          description: Trip not found
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    TripId:
+      name: tripId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        example: 1001
+  schemas:
+    TripStatus:
+      type: object
+      required: [tripId, status, updatedAt]
+      properties:
+        tripId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [SEARCHING, WAITING_DRIVER, MATCHED, IN_PROGRESS, COMPLETED, NO_DRIVER, TIMEOUT, CANCELLED]
+        driverId:
+          type: integer
+          format: int64
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+    UpdateStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [SEARCHING, WAITING_DRIVER, MATCHED, IN_PROGRESS, COMPLETED, NO_DRIVER, TIMEOUT, CANCELLED]
+        changedBy:
+          type: string
+          example: booking-service
+    StatusHistoryItem:
+      type: object
+      required: [historyId, tripId, newStatus, changedAt]
+      properties:
+        historyId:
+          type: integer
+          format: int64
+        tripId:
+          type: integer
+          format: int64
+        oldStatus:
+          type: string
+          nullable: true
+        newStatus:
+          type: string
+        changedBy:
+          type: string
+        changedAt:
+          type: string
+          format: date-time

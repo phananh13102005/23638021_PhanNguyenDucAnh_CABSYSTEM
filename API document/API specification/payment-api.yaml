@@ -1,0 +1,183 @@
+openapi: 3.0.3
+info:
+  title: Payment Service API
+  description: API for CASH and ONLINE payments. Implements BG02, BR05, UC04, AC11-AC13 and NFR03-NFR06.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8083/api/v1
+    description: Local Payment Service
+
+tags:
+  - name: Payments
+    description: Trip payment operations
+
+paths:
+  /trips/{tripId}/payments:
+    post:
+      tags: [Payments]
+      summary: Create a trip payment
+      operationId: createPayment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentRequest'
+      responses:
+        '201':
+          description: Payment recorded (AC11, AC12)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '400':
+          description: Invalid amount or payment data
+        '409':
+          description: Duplicate successful payment (AC13)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /payments/{paymentId}:
+    get:
+      tags: [Payments]
+      summary: Get payment status
+      operationId: getPayment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+      responses:
+        '200':
+          description: Payment status returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '404':
+          description: Payment not found
+
+  /payments/{paymentId}/online-result:
+    post:
+      tags: [Payments]
+      summary: Receive online gateway result
+      operationId: receiveOnlineResult
+      description: The gateway result must be verified before changing payment status to PAID.
+      security:
+        - gatewayAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnlineResultRequest'
+      responses:
+        '200':
+          description: Gateway result processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '400':
+          description: Invalid gateway result
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    gatewayAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    TripId:
+      name: tripId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        example: 1001
+    PaymentId:
+      name: paymentId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        example: 5001
+  schemas:
+    CreatePaymentRequest:
+      type: object
+      required: [amount, paymentMethod]
+      properties:
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          example: 75000
+        paymentMethod:
+          type: string
+          enum: [CASH, ONLINE]
+        transactionCode:
+          type: string
+          nullable: true
+          description: Required when confirming a successful online payment.
+    OnlineResultRequest:
+      type: object
+      required: [transactionCode, result, amount]
+      properties:
+        transactionCode:
+          type: string
+        result:
+          type: string
+          enum: [SUCCESS, FAILED]
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+    Payment:
+      type: object
+      required: [paymentId, tripId, amount, paymentMethod, paymentStatus]
+      properties:
+        paymentId:
+          type: integer
+          format: int64
+        tripId:
+          type: integer
+          format: int64
+        amount:
+          type: number
+          format: double
+        paymentMethod:
+          type: string
+          enum: [CASH, ONLINE]
+        paymentStatus:
+          type: string
+          enum: [PENDING, PAID, FAILED, CANCELLED]
+        transactionCode:
+          type: string
+          nullable: true
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
